@@ -1,0 +1,21 @@
+# params crawl data
+USE_CRAWL_DATA: False
+PARAMS_CRAWL_DATA:
+  URL: 'https://tiki.vn/'
+  URL_IDS: [
+      '8322',
+      '1883',
+      '1789',
+      '2549',
+      '1815',
+      '1882',
+      '1520',
+      '8594',
+      '931',
+      '1975',
+      '915'
+  ]
+  MAX_PRODCUTS : 100
+  MAX_COMMENTS : 100
+
+#  PARAMS PROCESS DATA

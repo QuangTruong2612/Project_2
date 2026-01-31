@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: Project_2
+Version: 0.0.0
+Summary: A small python package for NLP app
+Home-page: https://github.com/QuangTruong2612/Project_2
+Author: QuangTruong2612
+Author-email: quangtruong0905774841@gmail.com
+Project-URL: Bug Tracker, https://github.com/QuangTruong2612/Project_2/issues
+Dynamic: author
+Dynamic: author-email
+Dynamic: description
+Dynamic: home-page
+Dynamic: project-url
+Dynamic: summary
+
+# Project_2

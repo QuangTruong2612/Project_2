@@ -7,6 +7,9 @@ tqdm
 scipy
 numpy
 pandas
+scikit-learn
+requests
+
 
 tensorflow==2.17.0
 torch==2.4.0

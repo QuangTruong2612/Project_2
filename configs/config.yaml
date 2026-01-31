@@ -1,0 +1,6 @@
+artifacts_root: artifacts
+
+crawl_data:
+  root_dir: artifacts/crawl_data
+  data_path: artifacts/crawl_data/data.csv
+
