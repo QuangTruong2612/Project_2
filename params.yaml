@@ -19,3 +19,10 @@ PARAMS_CRAWL_DATA:
   MAX_COMMENTS : 100
 
 #  PARAMS PROCESS DATA
+TEST_SIZE : 0.2
+RANDOM_STATE : 42
+TARGET: "rating"
+COLS_NOT_USE: ["product_id", "user_name", "created_at", "product_name"]
+NGRAM: [1,2]
+MAX_FEATURES: 5000
+MIN_DF: 2

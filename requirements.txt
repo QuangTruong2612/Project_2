@@ -1,25 +1,33 @@
+# Core & Utilities
 python-box
 pyYAML>=6.0
 types-PyYAML
 ensure
 joblib
 tqdm
-scipy
-numpy
-pandas
-scikit-learn
 requests
+pyvi
 
+# Data Science (Ghim Numpy < 2 để tương thích tốt nhất)
+numpy<2.0.0
+scipy
+pandas
 
-tensorflow==2.17.0
-torch==2.4.0
-torchvision
-torchaudio
-mlflow==2.14.0
+# NLP & Computer Vision
+albumentations
+transformers
+
+# Deep Learning (Bản ổn định cho Windows CPU)
+torch==2.2.2
+torchvision==0.17.2
+
+# MLOps
+mlflow>=2.10.0
 dagshub
 dvc
 dvc-s3
 
+# Visualization & Notebook
 matplotlib
 seaborn
 notebook
@@ -28,4 +36,6 @@ awscli
 # Web Server
 Flask
 Flask-Cors
+
+# Local package
 -e .
