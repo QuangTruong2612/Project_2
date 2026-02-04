@@ -1,4 +1,0 @@
-[core]
-    remote = data-storage
-['remote "data-storage"']
-    url = s3://data-project-2-bucket
