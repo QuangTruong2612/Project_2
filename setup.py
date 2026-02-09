@@ -8,7 +8,7 @@ __version__ = "0.0.0"
 REPO_NAME = "Project_2"
 AUTHOR_USER_NAME = "QuangTruong2612"
 AUTHOR_EMAIL = "quangtruong0905774841@gmail.com"
-SRC_REPO = "Project_2"
+SRC_REPO = "AI"
 setuptools.setup(
     name=SRC_REPO,
     version=__version__,
