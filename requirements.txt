@@ -10,11 +10,14 @@ langchain-core>=0.1.33
 langgraph>=0.0.30
 openai>=1.14.0  # Hoặc google-generativeai nếu bạn dùng Gemini
 tiktoken>=0.6.0
+langchain-groq
+langchain-community
 
 # --- Vector Database & RAG (Cho Bookmark & Home Document) ---
 chromadb>=0.4.24
 sentence-transformers>=2.6.0
 PyMuPDF>=1.24.0  # Xử lý file PDF cực kỳ nhanh và chuẩn xác
+supabase
 
 # --- Graph Database (Cho Graph Memory) ---
 falkordb>=1.0.1
