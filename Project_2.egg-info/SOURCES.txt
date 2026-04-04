@@ -1,0 +1,12 @@
+README.md
+setup.py
+Project_2.egg-info/PKG-INFO
+Project_2.egg-info/SOURCES.txt
+Project_2.egg-info/dependency_links.txt
+Project_2.egg-info/top_level.txt
+src/__init__.py
+src/main.py
+src/core/__init__.py
+src/core/config.py
+src/core/database.py
+src/core/vector_store.py
