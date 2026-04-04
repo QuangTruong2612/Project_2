@@ -3,47 +3,31 @@ from src.core.database import supabase
 from pydantic import BaseModel, Field
 from typing import Optional
 import dateparser
-from datetime import datetime, timedelta
 
-
-class addExpenseInput(BaseModel):
-    user_id: str = Field(description= "id của user")
-    amount: float = Field(description="Số tiền chi tiêu")
-    category: str = Field(description="Hạn mục chi tiêu")
+# ==========================================
+# TOOL 1: THÊM CHI TIÊU
+# ==========================================
+class AddExpenseInput(BaseModel):
+    user_id: str = Field(description="id của user (hệ thống tự lấy)")
+    amount: float = Field(description="Số tiền chi tiêu (luôn là số, vd: 50k -> 50000)")
+    category: str = Field(description="Hạng mục chi tiêu (Ăn uống, Đi lại, Mua sắm, v.v.)")
     description: str = Field(description="Mô tả chi tiết khoản chi tiêu")
-    created_at: Optional[str] = Field(
+    expenses_date: Optional[str] = Field(
         default=None, 
-        description="Thời gian chi tiêu nếu người dùng nhắc tới (Ví dụ: 'hôm qua', 'thứ 2 tuần trước'). Định dạng ISO hoặc mô tả text."
-    ) 
+        description="Thời gian chi tiêu nếu người dùng nhắc tới (Ví dụ: 'hôm qua', '10/3'). Bỏ trống nếu không nhắc."
+    )
 
-# add expense tool 
-@tool(args_schema=addExpenseInput)
-async def addExpenseTool(user_id: str, 
-                         amount: Optional[float] = None,
-                         category: Optional[str] = None,
-                         description: Optional[str] = None,
-                         created_at: Optional[str] = None) -> str:
+@tool(args_schema=AddExpenseInput)
+async def add_expense_tool(user_id: str, 
+                           amount: float,
+                           category: str,
+                           description: str,
+                           expenses_date: Optional[str] = None) -> str:
     """
-    Công cụ này dùng để GHI LẠI (LƯU) một khoản chi tiêu mới của người dùng vào cơ sở dữ liệu.
-    Kích hoạt khi người dùng báo cáo một giao dịch chi tiền hoặc muốn lưu lại số tiền đã tiêu.
-    Ví dụ: 'Mình vừa ăn phở hết 50k', 'Đổ xăng 30k', 'Hôm qua mua quần áo 500 ngàn', 'Ghi lại cho anh tiền cafe 30000'.
-
-    Hướng dẫn trích xuất tham số:
-    - amount: Yêu cầu bắt buộc phải chuyển đổi số tiền viết tắt hoặc bằng chữ thành con số thực tế đầy đủ. Ví dụ: '50k' hoặc '50 ngàn' -> 50000; '1 triệu' hoặc '1 củ' -> 1000000; '5 lít' -> 500000. Tham số này luôn là dạng số.
-    - category: Phân loại khoản chi này vào một danh mục phù hợp, ngắn gọn (ví dụ: 'Ăn uống', 'Đi lại', 'Mua sắm', 'Hóa đơn', 'Giải trí', 'Sức khỏe', 'Khác').
-    - description: Tóm tắt ngắn gọn và rõ ràng mục đích chi tiêu (ví dụ: 'Ăn bát phở bò', 'Đổ bình xăng', 'Mua quần áo mới').
-    - created_at: Trích xuất nguyên văn cụm từ chỉ thời gian nếu người dùng có nhắc đến (ví dụ: 'hôm qua', 'sáng nay', 'tuần trước', '10/3'). Nếu người dùng không nhắc đến thời gian, hãy bỏ trống tham số này.
+    Dùng để GHI LẠI (LƯU) một khoản chi tiêu mới vào cơ sở dữ liệu.
+    Kích hoạt khi người dùng báo cáo một giao dịch chi tiền. Ví dụ: 'Mình vừa ăn phở hết 50k'.
     """
     try:
-
-        # extract date
-        final_date = None
-        if created_at:
-            # Sử dụng dateparser để hiểu "hôm qua", "2 days ago", "10/3"
-            parsed_date = dateparser.parse(created_at, settings={'PREFER_DATES_FROM': 'past'})
-            if parsed_date:
-                final_date = parsed_date.isoformat()
-
         insert_data = {
             "user_id": user_id,
             "amount": amount,
@@ -51,115 +35,105 @@ async def addExpenseTool(user_id: str,
             "description": description
         }
 
-        
-        if final_date:
-            insert_data["created_at"] = final_date
+        final_date_str = None
+        if expenses_date:
+            parsed_date = dateparser.parse(expenses_date, settings={'PREFER_DATES_FROM': 'past'})
+            if parsed_date:
+                final_date_str = parsed_date.strftime('%Y-%m-%d') # Chuẩn hóa về YYYY-MM-DD
+                insert_data["expenses_date"] = final_date_str
 
         result = supabase.table("expenses").insert(insert_data).execute()   
         if result.data:
-            time_str = f" vào '{final_date}'" if final_date else ""
+            time_str = f" vào '{final_date_str}'" if final_date_str else ""
             return f"✅ Đã ghi nhận: {description} - {amount:,.0f} VNĐ{time_str}."
         
         return "❌ Lỗi: Không thể lưu vào database."
-
     except Exception as e:
         return f"⚠️ Lỗi hệ thống: {str(e)}"
 
-
-
-class getExpenseInput(BaseModel):
-    user_id: str = Field(description= "id của user")
-    category: str = Field(description="Hạn mục chi tiêu")
-    created_at: Optional[str] = Field(
+# ==========================================
+# TOOL 2: TÌM KIẾM / TRUY VẤN CHI TIÊU
+# ==========================================
+class GetExpenseInput(BaseModel):
+    user_id: str = Field(description="id của user")
+    category: str = Field(description="Hạng mục cần lọc. NẾU NGƯỜI DÙNG KHÔNG CỤ THỂ, HÃY TRUYỀN 'all'")
+    expenses_date: Optional[str] = Field(
         default=None, 
-        description="Thời gian chi tiêu nếu người dùng nhắc tới (Ví dụ: 'hôm qua', 'thứ 2 tuần trước'). Định dạng ISO hoặc mô tả text."
+        description="Thời gian cần lọc (Ví dụ: 'hôm nay', 'tháng này')."
     ) 
 
-
-# get expense tool
-@tool(args_schema=getExpenseInput)
-async def get_expense_tool(
-    user_id: str,
-    category: Optional[str] = None,
-    created_at: Optional[str] = None) -> list[dict]:
+@tool(args_schema=GetExpenseInput)
+async def get_expense_tool(user_id: str,
+                           category: str,
+                           expenses_date: Optional[str] = None) -> list[dict] | str:
     """
-    Công cụ này dùng để TRUY VẤN, XEM, THỐNG KÊ hoặc TÌM KIẾM các khoản chi tiêu của người dùng đã được lưu trong cơ sở dữ liệu.
-    Kích hoạt khi người dùng đặt câu hỏi về lịch sử tiêu tiền.
-    Ví dụ: 'Hôm nay tôi đã tiêu những gì?', 'Tìm các khoản chi ăn uống ngày hôm qua', 'Thống kê tiền cafe tuần trước'.
-
-    Hướng dẫn trích xuất tham số:
-    - user_id: Mã định danh của người dùng hiện tại (tự động lấy từ ngữ cảnh hệ thống).
-    - category: Lọc theo hạng mục chi tiêu nếu người dùng có chỉ định mảng cụ thể (ví dụ: 'Ăn uống', 'Đi lại', 'Mua sắm'). CHÚ Ý: Nếu người dùng không nhắc đến hạng mục hoặc muốn xem toàn bộ, HÃY TRUYỀN TỪ KHÓA 'all'.
-    - created_at: Cụm từ nguyên văn chỉ thời gian cần lọc nếu người dùng có đề cập (ví dụ: 'hôm nay', 'hôm qua', 'tuần trước', 'tháng này', '10/3'). Nếu người dùng muốn xem tất cả thời gian hoặc không nhắc tới, hãy bỏ trống tham số này (None).
+    Dùng để TRUY VẤN, XEM, THỐNG KÊ danh sách khoản chi tiêu.
+    Kích hoạt khi người dùng đặt câu hỏi: 'Hôm nay tôi tiêu gì?', 'Tìm khoản chi mua sắm'.
+    CŨNG ĐƯỢC SỬ DỤNG ĐỂ TÌM ID CỦA KHOẢN CHI KHI CẦN CẬP NHẬT.
     """
     try:
         query = supabase.table("expenses").select("*").eq("user_id", user_id)
 
-        if category != "all":
+        if category and category.lower() != "all":
             query = query.eq("category", category)
 
-        if created_at:
-            parsed_date = dateparser.parse(created_at, settings={'PREFER_DATES_FROM': 'past'})
+        if expenses_date:
+            parsed_date = dateparser.parse(expenses_date, settings={'PREFER_DATES_FROM': 'past'})
             if parsed_date:
-                query = query.eq("created_at", parsed_date.isoformat())
+                query = query.eq("expenses_date", parsed_date.strftime('%Y-%m-%d'))
 
         result = query.execute()
         if result.data:
             return result.data
         else:
-            return "Không tìm thấy chi tiêu nào."
-
+            return "Không tìm thấy chi tiêu nào phù hợp."
     except Exception as e:
         return f"Lỗi truy vấn: {str(e)}"
 
+# ==========================================
+# TOOL 3: CẬP NHẬT / SỬA CHI TIÊU
+# ==========================================
+class UpdateExpenseInput(BaseModel):
+    user_id: str = Field(description="id của user")
+    id: str = Field(description="ID của khoản chi tiêu cần sửa (BẮT BUỘC)")
+    amount: Optional[float] = Field(default=None, description="Số tiền mới")
+    category: Optional[str] = Field(default=None, description="Hạng mục mới")
+    description: Optional[str] = Field(default=None, description="Mô tả mới")
+    expenses_date: Optional[str] = Field(default=None, description="Thời gian mới")
 
-
-class updateExpenseInput(BaseModel):
-    user_id: str = Field(description= "id của user")
-    id: str = Field(description= "id của khoản chi tiêu")
-    amount: Optional[float] = Field(description= "Số tiền chi tiêu")
-    category: Optional[str] = Field(description= "Hạn mục chi tiêu")
-    description: Optional[str] = Field(description= "Mô tả chi tiết khoản chi tiêu")
-    created_at: Optional[str] = Field(description= "Thời gian chi tiêu")
-
-# update expenses tool
-@tool(args_schema=updateExpenseInput)
-async def update_expense_tool(
-    user_id: str,
-    id: str,
-    amount: Optional[float] = None,
-    category: Optional[str] = None,
-    description: Optional[str] = None,
-    created_at: Optional[str] = None) -> str:
+@tool(args_schema=UpdateExpenseInput)
+async def update_expense_tool(user_id: str,
+                              id: str,
+                              amount: Optional[float] = None,
+                              category: Optional[str] = None, 
+                              description: Optional[str] = None,
+                              expenses_date: Optional[str] = None) -> str:
     """
-    Công cụ này dùng để CẬP NHẬT, SỬA ĐỔI hoặc CHỈNH SỬA một khoản chi tiêu đã được lưu trước đó.
-    Kích hoạt khi người dùng muốn thay đổi thông tin của một giao dịch đã ghi nhận.
-    Ví dụ: 'Sửa lại khoản ăn uống hôm qua thành 100k', 'Đổi lại ngày chi tiêu', 'Sửa mô tả cho khoản mua sắm'.
-
-    Hướng dẫn trích xuất tham số:
-    - user_id: Mã định danh của người dùng hiện tại (tự động lấy từ ngữ cảnh hệ thống).
-    - id: Mã định danh duy nhất của khoản chi tiêu cần sửa (bắt buộc phải có).
-    - amount: Số tiền mới nếu người dùng muốn thay đổi.
-    - category: Hạng mục mới nếu người dùng muốn thay đổi.
-    - description: Mô tả mới nếu người dùng muốn thay đổi.
-    - created_at: Thời gian mới nếu người dùng muốn thay đổi.
+    Dùng để CẬP NHẬT hoặc CHỈNH SỬA một khoản chi tiêu đã lưu.
+    
+    LUẬT THÉP CẤM QUÊN VỀ ID:
+        + Phải sử dụng công cụ get_expense_tool và truyền các thông tin cần thiết để tìm kiếm và xác định đúng 'id' trước, sau đó mới gọi lại công cụ này.
     """
     try:
         update_data = {}
-        if amount is not None:
-            update_data["amount"] = amount
-        if category is not None:
-            update_data["category"] = category
-        if description is not None:
-            update_data["description"] = description
-        if created_at is not None:
-            update_data["created_at"] = created_at
+        if amount is not None: update_data["amount"] = amount
+        if category is not None: update_data["category"] = category
+        if description is not None: update_data["description"] = description
+        
+        # Sửa lỗi quên parse date ở bản cũ của bạn
+        if expenses_date:
+            parsed_date = dateparser.parse(expenses_date, settings={'PREFER_DATES_FROM': 'past'})
+            if parsed_date:
+                update_data["expenses_date"] = parsed_date.strftime('%Y-%m-%d')
+
+        if not update_data:
+            return "Không có thông tin nào được yêu cầu cập nhật."
 
         result = supabase.table("expenses").update(update_data).eq("id", id).execute()
         if result.data:
-            return f"✅ Đã cập nhật khoản chi tiêu: {id}"
+            return f"✅ Đã cập nhật thành công khoản chi tiêu ID: {id}"
         else:
-            return "❌ Không tìm thấy khoản chi tiêu cần cập nhật."
+            return f"❌ ID '{id}' KHÔNG TỒN TẠI. Hãy gọi 'get_expense_tool' để lấy lại ID đúng."
 
     except Exception as e:
         return f"Lỗi cập nhật: {str(e)}"
