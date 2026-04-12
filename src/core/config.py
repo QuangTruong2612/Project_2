@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     URL_SUPABASE: Optional[str] = None
     ANON_KEY_SUPABASE: Optional[str] = None
     PUBLISH_KEY_SUPABASE: Optional[str] = None
+    WEATHER_API: Optional[str] = None
+    WEATHER_URL: Optional[str] = None
+    IP_TOKEN: Optional[str] = None
     
     model_config = SettingsConfigDict(
         env_file=".env", 

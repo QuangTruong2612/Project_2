@@ -31,3 +31,7 @@ httpx>=0.27.0  # Dùng thay requests để hỗ trợ gọi API bất đồng b�
 python-dotenv>=1.0.1
 
 dateparser
+ipinfo
+
+geocoder
+geopy
