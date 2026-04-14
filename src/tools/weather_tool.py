@@ -1,81 +1,134 @@
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 import dateparser
-from src.core import settings
-import requests
+import httpx
 from datetime import datetime
+from src.core import settings
+from typing import Optional, List, Union
 
 weather_url = settings.WEATHER_URL
 weather_api = settings.WEATHER_API
 
-class WeatherInput(BaseModel):
-    location: str = Field(description="vị trí dự báo thời tiết")
-    time: str = Field(description="thời gian dự báo thời tiết")
+
+# ==========================================
+# CẤU TRÚC DỮ LIỆU ĐẦU VÀO (SCHEMAS)
+# ==========================================
+
+class WeatherCurrentInput(BaseModel):
+    location: str = Field(description="Tên thành phố hoặc vị trí (văn bản tiếng Anh, ví dụ: 'Da Nang', 'London')")
+
+class WeatherForecastInput(BaseModel):
+    location: str = Field(description="Tên thành phố hoặc vị trí (văn bản tiếng Anh, ví dụ: 'Da Nang', 'London')")
+    time: str = Field(description="Thời gian cụ thể cần dự báo (ví dụ: 'tomorrow', '2026-04-12 15:00:00')")
 
 
-@tool(args_schema=WeatherInput)
-async def get_weather_current_tool(location: str) -> str:
+# ==========================================
+# HÀM BỔ TRỢ (HELPERS)
+# ==========================================
+
+def _format_weather_data(item: dict, city_name: Optional[str] = None) -> dict:
+    """Helper định dạng lại dữ liệu thời tiết cho đồng nhất."""
+    return {
+        "city": city_name or "N/A",
+        "time": item.get("dt_txt", "Hiện tại"),
+        "condition": item["weather"][0]["description"],
+        "temp": item["main"]["temp"],
+        "feels_like": item["main"]["feels_like"],
+        "humidity": item["main"]["humidity"],
+        "wind_speed": item["wind"]["speed"],
+        "sunset": datetime.fromtimestamp(item["sys"]["sunset"]).strftime('%H:%M') if "sys" in item and "sunset" in item["sys"] else "N/A"
+    }
+
+
+# ==========================================
+# CÔNG CỤ (TOOLS)
+# ==========================================
+# tool get weather current
+@tool(args_schema=WeatherCurrentInput)
+async def get_weather_current_tool(location: str) -> Union[dict, str]:
     """
-    Dùng để  đưa ra thông tin thời tiết ngày tức thì
-    Kích hoạt khi người dùng hỏi về thời tiết ngay tức thì
-
-    * LƯU Ý: trước khi gọi tool phải đưa location về tiếng anh. 
-    Nếu như người dùng chưa cho location thì phải hỏi người dùng muốn xem thời tiết ở đâu
-    """
-    try:
-        data = requests.get(f"{weather_url}/weather?q={location}&lang=vi&appid={weather_api}&units=metric").json()
-
-        clean_weather = {
-            "city": data["name"],
-            "condition": data["weather"][0]["description"],
-            "current_temp": data["main"]["temp"],
-            "feels_like": data["main"]["feels_like"],
-            "humidity": data["main"]["humidity"],
-            "wind_speed": data["wind"]["speed"],
-            "sunset": datetime.fromtimestamp(data["sys"]["sunset"]).strftime('%H:%M')
-            }
-        return clean_weather
-    except Exception as e:
-        return f"Lỗi dự báo thời tiết: {str(e)}"
-
-
-@tool(args_schema=WeatherInput)
-async def get_weather_forecast_tool(location: str,
-                           time: str) -> str:
-    """
-    Dùng để dự báo thời tiết theo time
-    Kích hoạt khi người dùng hỏi về thời tiết theo time
+    Lấy thông tin thời tiết HIỆN TẠI (ngay bây giờ).
     
-    * LƯU Ý: trước khi gọi tool phải đưa location về tiếng anh. 
-    Nếu như người dùng chưa cho location thì phải hỏi người dùng muốn xem thời tiết ở đâu
+    HƯỚNG DẪN:
+    1. Chỉ sử dụng khi người dùng hỏi về thời tiết hiện tại hoặc không đề cập thời gian cụ thể.
+    2. PHẢI dịch tên địa điểm sang tiếng Anh trước khi gọi (ví dụ: 'Hà Nội' -> 'Hanoi').
+    3. Nếu người dùng chưa cung cấp địa điểm, hãy hỏi họ trước khi gọi tool.
     """
     try:
-        data = requests.get(f"{weather_url}/forecast?q={location}&lang=vi&appid={weather_api}&units=metric").json()
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{weather_url}/weather",
+                params={
+                    "q": location,
+                    "lang": "vi",
+                    "appid": weather_api,
+                    "units": "metric"
+                }
+            )
+            data = response.json()
+            
+            if response.status_code != 200:
+                return f"Lỗi từ OpenWeatherMap: {data.get('message', 'Không xác định')}"
 
+            return _format_weather_data(data, city_name=data.get("name"))
+    except Exception as e:
+        return f"Lỗi hệ thống dự báo: {str(e)}"
+
+
+# tool get weather forecast
+@tool(args_schema=WeatherForecastInput)
+async def get_weather_forecast_tool(location: str, time: str) -> Union[List[dict], str]:
+    """
+    Dự báo thời tiết cho một THỜI ĐIỂM CỤ THỂ hoặc trong tương lai (ví dụ: ngày mai, chiều nay).
+    
+    HƯỚNG DẪN:
+    1. Sử dụng khi câu hỏi có mốc thời gian (ví dụ: 'mai', 'thứ 2 tới', '15h chiều nay').
+    2. PHẢI dịch tên địa điểm sang tiếng Anh trước khi gọi.
+    3. Trả về các mốc thời gian gần nhất với yêu cầu để bạn có thể tổng hợp câu trả lời tốt nhất.
+    """
+    try:
         time_expect = dateparser.parse(time, settings={'PREFER_DATES_FROM': 'future'})
         if not time_expect:
-            return "Không thể nhận diện thời gian!"
+            return "Không thể nhận diện thời gian yêu cầu. Vui lòng thử lại với định dạng khác."
 
-        before_item = None
-        after_item = None
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{weather_url}/forecast",
+                params={
+                    "q": location,
+                    "lang": "vi",
+                    "appid": weather_api,
+                    "units": "metric"
+                }
+            )
+            data = response.json()
+            
+            if response.status_code != 200:
+                return f"Lỗi từ OpenWeatherMap: {data.get('message', 'Không xác định')}"
 
-        for item in data["list"]:
-            item_dt = datetime.strptime(item['dt_txt'], '%Y-%m-%d %H:%M:%S')
+            city_name = data.get("city", {}).get("name")
+            before_item = None
+            after_item = None
+
+            for item in data["list"]:
+                item_dt = datetime.strptime(item['dt_txt'], '%Y-%m-%d %H:%M:%S')
+                
+                if item_dt == time_expect:
+                    return _format_weather_data(item, city_name)
+                elif item_dt < time_expect:
+                    before_item = item
+                elif item_dt > time_expect:
+                    after_item = item
+                    break     
+
             
-            if item_dt < time_expect:
-                before_item = item
-            elif item_dt > time_expect:
-                after_item = item
-                break 
-            else:
-                return item
-        
-        result = []
-        if before_item:
-            result.append(before_item)
-        if after_item and after_item not in result:
-            result.append(after_item)
+            results = []
+            if before_item:
+                results.append(_format_weather_data(before_item, city_name))
+            if after_item and (not before_item or after_item['dt_txt'] != before_item['dt_txt']):
+                results.append(_format_weather_data(after_item, city_name))
+                
+            return results if results else "Không tìm thấy dữ liệu dự báo cho thời điểm này trong 5 ngày tới."
             
-        return result if result else "Không có dữ liệu dự báo cho thời gian này."
     except Exception as e:
         return f"Lỗi dự báo thời tiết: {str(e)}"
