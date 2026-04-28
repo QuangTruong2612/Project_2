@@ -4,5 +4,6 @@ __pycache__/
 *.pyd
 .env
 venv/
+.venv/
 models
 Project_2.egg-info/*
