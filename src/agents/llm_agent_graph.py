@@ -62,7 +62,7 @@ from src.tools import (
 
 llm = ChatGroq(
     api_key=settings.GROQ_API_KEY,
-    model_name="llama-3.3-70b-versatile",
+    model_name="llama-3.1-8b-instant",
     temperature=0.1,
 )
 
@@ -89,7 +89,6 @@ TOOLS_NEEDING_USER_ID = {
 
 # ─── Router (structured output) ────────────────────────────────────────────────
 
-
 class RouteDecision(BaseModel):
     """Quyết định điều phối: chọn agent chuyên môn xử lý yêu cầu."""
 
@@ -104,7 +103,6 @@ class RouteDecision(BaseModel):
 
 
 router_llm = llm.with_structured_output(RouteDecision)
-
 
 def _system_for(agent_name: str) -> SystemMessage:
     profile = AGENT_PROFILE[agent_name]
@@ -156,7 +154,6 @@ async def agent_main_node(state: AgentState) -> dict:
 
 
 # ─── Tool node tuỳ biến: tự inject user_id từ state ────────────────────────────
-
 
 def _make_tool_node(tools: list) -> Callable:
     tools_by_name = {t.name: t for t in tools}
@@ -290,3 +287,12 @@ workflow.add_edge("agent_main", END)
 
 memory = MemorySaver()
 agent = workflow.compile(checkpointer=memory)
+
+
+# try:
+#     # In sơ đồ ASCII ra terminal
+#     # print(agent.get_graph())
+#     # Hoặc Mermaid (dán vào https://mermaid.live để xem đẹp hơn)
+#     print(agent.get_graph().draw_mermaid())
+# except Exception as e:
+#     print(e)
