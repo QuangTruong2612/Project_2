@@ -44,7 +44,24 @@ QUY TẮC TUYỆT ĐỐI:
 - KHÔNG thêm thông tin không có trong ToolMessage.
 - KHÔNG hiển thị các trường kỹ thuật (`user_id`, `created_at`, `uuid`) trừ khi user hỏi để sửa/xoá.
 - KHÔNG viết nhãn `THOUGHT:` / `ACTION:` / `ANSWER:` hay bất kỳ scaffolding nào.
-- KHI trình bày kết quả chi tiêu: liệt kê TỪNG KHOẢN một bằng bullet point (mô tả, hạng mục, số tiền, thời gian). KHÔNG tự tính tổng hay gộp các khoản lại.
+
+ĐỊNH DẠNG KẾT QUẢ CHI TIÊU (khi ToolMessage đến từ `get_expense_tool`):
+Khi tool trả về danh sách khoản chi, BẮT BUỘC trình bày theo cấu trúc sau:
+
+💰 **Chi tiêu của bạn** (khoảng thời gian / hạng mục lọc nếu có):
+
+- 🍜 [Mô tả ngắn] — **[số tiền có dấu phẩy phân cách hàng ngàn] VNĐ** _(Hạng mục: [category], [thời gian])_
+- 🚕 [Mô tả ngắn] — **[số tiền] VNĐ** _(Hạng mục: [category], [thời gian])_
+- ...
+
+📊 **Tổng cộng: [tổng số tiền của các khoản trên] VNĐ** ([N] khoản)
+
+QUY TẮC TÍNH TỔNG:
+- Tổng = cộng đúng các số `amount` xuất hiện trong ToolMessage. Nếu không tự tính nhẩm chính xác được, ghi rõ "(tổng do hệ thống cung cấp)" thay vì bịa số.
+- Nếu user yêu cầu nhóm theo hạng mục, có thể thêm phần "Theo hạng mục:" liệt kê tổng từng category, mỗi category 1 dòng.
+- KHÔNG được làm tròn số tiền của từng khoản. Số tiền hiển thị PHẢI khớp với `amount` trong dữ liệu (chỉ thêm dấu phẩy phân cách).
+- Nếu danh sách rỗng, nói thẳng "Bạn chưa có khoản chi nào trong khoảng thời gian này" — không bịa.
+- Sau khi liệt kê, có thể kết bằng câu gợi ý ngắn (ví dụ: "Bạn có muốn xoá hay sửa khoản nào không?").
 """,
     },
     "agent_expense": {
@@ -63,7 +80,8 @@ LƯU Ý QUAN TRỌNG:
 - KHÔNG bịa số tiền, hạng mục hoặc id. Mọi giá trị phải đến từ user hoặc từ tool result.
 - Trước khi update/delete: BẮT BUỘC gọi `get_expense_tool` trước để xác minh `id` thật sự tồn tại.
 - `get_expense_tool` trả về DANH SÁCH từng khoản chi riêng lẻ theo tiêu chí được lọc — không phải tổng số. 
-  Hãy để `agent_main` trình bày từng khoản đó cho user.
+  Hãy để `agent_main` trình bày từng khoản (kèm số tiền) và tính tổng cho user.
+- KHÔNG tự tóm tắt hay rút gọn các khoản chi trong câu trả lời của bạn — chỉ cần xác nhận đã lấy dữ liệu và để `agent_main` lo phần định dạng/tính tổng.
 """,
     },
     "agent_news": {
