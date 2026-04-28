@@ -1,0 +1,35 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/quangtruong2612/project_2-backend:latest
+    container_name: project2-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    networks:
+      - project2-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: ghcr.io/quangtruong2612/project_2-frontend:latest
+    container_name: project2-frontend
+    restart: unless-stopped
+    environment:
+      # Frontend gọi backend qua mạng nội bộ docker
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks:
+      - project2-net
+
+networks:
+  project2-net:
+    driver: bridge
