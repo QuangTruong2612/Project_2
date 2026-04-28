@@ -22,3 +22,4 @@ def get_supabase_client() -> Client:
         raise
 
 supabase: Client = get_supabase_client()
+

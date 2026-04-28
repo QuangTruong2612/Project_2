@@ -38,18 +38,37 @@ class DeleteExpenseInput(BaseModel):
 # HÀM BỔ TRỢ (HELPERS)
 # ==========================================
 
-def _parse_datetime(dt_str: str, prefer_end_of_day: bool = False) -> Optional[str]:
-    """Chuẩn hóa ngày tháng về định dạng ISO 8601 (timestamptz)."""
+def _parse_datetime(
+    dt_str: str,
+    prefer_end_of_day: bool = False,
+    prefer_start_of_day: bool = False
+) -> Optional[str]:
+    """Chuẩn hóa ngày tháng về ISO 8601 có timezone UTC.
+    - prefer_start_of_day=True: force về 00:00:00 (dùng cho giới hạn dưới)
+    - prefer_end_of_day=True:   force về 23:59:59 (dùng cho giới hạn trên)
+    """
+    from datetime import timezone as tz
     if not dt_str:
         return None
-    
-    parsed = dateparser.parse(dt_str, settings={'PREFER_DATES_FROM': 'past'})
+
+    parsed = dateparser.parse(
+        dt_str,
+        settings={
+            'PREFER_DATES_FROM': 'current_period',
+            'RETURN_AS_TIMEZONE_AWARE': True,
+            'TIMEZONE': 'Asia/Ho_Chi_Minh',
+            'TO_TIMEZONE': 'UTC',
+        }
+    )
     if not parsed:
         return None
-        
-    if prefer_end_of_day and parsed.time() == time(0, 0):
-        parsed = datetime.combine(parsed.date(), time(23, 59, 59))
-        
+
+    # Luôn apply giới hạn ngày nếu được yêu cầu (không kiểm tra time == 00:00)
+    if prefer_start_of_day:
+        parsed = datetime.combine(parsed.date(), time(0, 0, 0), tzinfo=tz.utc)
+    elif prefer_end_of_day:
+        parsed = datetime.combine(parsed.date(), time(23, 59, 59), tzinfo=tz.utc)
+
     return parsed.isoformat()
 
 # ==========================================
@@ -100,7 +119,7 @@ async def get_expense_tool(user_id: str,
             query = query.ilike("category", f"%{category}%")
 
         if start_date:
-            parsed_start = _parse_datetime(start_date)
+            parsed_start = _parse_datetime(start_date, prefer_start_of_day=True)
             if parsed_start:
                 query = query.gte("expense_date", parsed_start)
 
@@ -110,7 +129,9 @@ async def get_expense_tool(user_id: str,
                 query = query.lte("expense_date", parsed_end)
 
         result = query.execute()
+
         if result.data:
+            print(result.data)
             return result.data
         return "🔍 Không tìm thấy khoản chi tiêu nào khớp với khoảng thời gian và hạng mục yêu cầu."
     except Exception as e:

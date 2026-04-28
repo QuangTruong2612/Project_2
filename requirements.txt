@@ -35,3 +35,6 @@ ipinfo
 
 geocoder
 geopy
+IPython
+
+-e .
