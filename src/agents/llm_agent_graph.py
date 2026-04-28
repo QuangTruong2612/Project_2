@@ -3,13 +3,20 @@
 Kiến trúc:
     START -> agent_router (with_structured_output -> chọn next_agent)
                 |
-                +--> agent_expense  <-> tools_expense
+                +--> agent_expense  <-> tools_expense  -> END
                 |
-                +--> agent_weather  <-> tools_weather
+                +--> agent_weather  <-> tools_weather  -> END
                 |
-                +--> agent_news     <-> tools_news
+                +--> agent_news     <-> tools_news     -> END
                 |
                 +--> agent_main -> END
+
+Lưu ý: Specialist sau khi xong vong tool sẽ tự sinh AIMessage cuối cùng
+(dựa trên ToolMessage trong context) và đi thẳng đến END. `agent_main` chỉ
+được dùng cho các yêu cầu không cần tool (chào hỏi, câu hỏi chung). Việc
+bắt specialist đi qua agent_main dẫn tới việc agent_main rút gọn / viết đè
+lên câu trả lời tốt của specialist — gây mất thông tin (vd: weather data bị
+thay bằng câu follow-up rỗng).
 
 Cốt lõi:
 - Mỗi specialist `bind_tools(...)` tools tương ứng → LLM gọi tool qua native
@@ -215,17 +222,17 @@ tools_news_node = _make_tool_node(NEWS_TOOLS)
 def _make_specialist_router(tools_node_name: str) -> Callable:
     """Sau khi specialist phản hồi:
     - Nếu AIMessage có `tool_calls` -> nhảy sang tool node tương ứng.
-    - Ngược lại -> chuyển cho agent_main tổng hợp.
+    - Ngược lại -> END (AIMessage của specialist chính là câu trả lời cuối).
     """
 
     def route(state: AgentState) -> str:
         messages = state.get("messages", [])
         if not messages:
-            return "agent_main"
+            return END
         last = messages[-1]
         if isinstance(last, AIMessage) and last.tool_calls:
             return tools_node_name
-        return "agent_main"
+        return END
 
     return route
 
@@ -260,17 +267,17 @@ workflow.add_conditional_edges(
 workflow.add_conditional_edges(
     "agent_expense",
     _make_specialist_router("tools_expense"),
-    {"tools_expense": "tools_expense", "agent_main": "agent_main"},
+    {"tools_expense": "tools_expense", END: END},
 )
 workflow.add_conditional_edges(
     "agent_weather",
     _make_specialist_router("tools_weather"),
-    {"tools_weather": "tools_weather", "agent_main": "agent_main"},
+    {"tools_weather": "tools_weather", END: END},
 )
 workflow.add_conditional_edges(
     "agent_news",
     _make_specialist_router("tools_news"),
-    {"tools_news": "tools_news", "agent_main": "agent_main"},
+    {"tools_news": "tools_news", END: END},
 )
 
 # Sau khi tool chạy xong, quay lại đúng specialist để xử lý kết quả
