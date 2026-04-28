@@ -7,3 +7,12 @@ venv/
 .venv/
 models
 Project_2.egg-info/*
+
+# Frontend (Next.js)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/*.tsbuildinfo
+
+# Misc
+.DS_Store

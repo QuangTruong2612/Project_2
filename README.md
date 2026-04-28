@@ -43,5 +43,48 @@ Hệ thống được thiết kế theo mô hình Micro-services bao gồm:
 ### Các bước cài đặt
 1. **Clone repository:**
    ```bash
-   git clone [https://github.com/your-username/personal-ai-agent.git](https://github.com/your-username/personal-ai-agent.git)
-   cd personal-ai-agent
+   git clone https://github.com/QuangTruong2612/Project_2.git
+   cd Project_2
+   ```
+
+2. **Cấu hình biến môi trường:**
+   ```bash
+   cp .env.example .env
+   # Điền GROQ_API_KEY, WEATHER_API, SUPABASE_URL, SUPABASE_KEY
+   ```
+
+3. **Chạy bằng Docker Compose (khuyến nghị):**
+   ```bash
+   docker compose up --build
+   # Frontend: http://localhost:3000
+   # Backend API: http://localhost:8000  (docs: /docs, health: /health)
+   ```
+
+   - Frontend Next.js sẽ proxy `/api/chat` sang `BACKEND_URL` (mặc định
+     `http://backend:8000` trong network nội bộ docker).
+   - Cuộc hội thoại lưu trong `localStorage` của trình duyệt + LangGraph
+     `MemorySaver` (in-memory ở backend, mất khi restart container).
+
+4. **Phát triển frontend riêng (không Docker):**
+   ```bash
+   cd frontend
+   npm install
+   BACKEND_URL=http://localhost:8000 npm run dev
+   ```
+
+## 🚢 6. CI/CD
+
+- **CI** (`.github/workflows/ci.yml`): chạy trên mọi PR / push `main` —
+  `python -m compileall src` cho backend, `npm run lint && npm run build`
+  cho frontend, build Docker images cho cả 2 service để validate.
+- **Release** (`.github/workflows/release.yml`): chạy trên push vào `main`
+  hoặc tag `v*.*.*` — build & push images lên GitHub Container Registry:
+  - `ghcr.io/quangtruong2612/project_2-backend:latest` (+ tag `sha-<short>`)
+  - `ghcr.io/quangtruong2612/project_2-frontend:latest`
+
+  Để pull về VPS chạy production:
+  ```bash
+  echo "$GHCR_PAT" | docker login ghcr.io -u <username> --password-stdin
+  docker compose pull
+  docker compose up -d
+  ```
