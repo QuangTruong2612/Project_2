@@ -28,9 +28,10 @@ ENV NODE_ENV=production \
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 nextjs
 
-COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Tạo public/ rỗng để Next.js standalone server không fail nếu chưa có asset.
+RUN mkdir -p ./public && chown -R nextjs:nodejs ./public
 
 USER nextjs
 EXPOSE 3000
