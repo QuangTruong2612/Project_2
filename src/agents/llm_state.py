@@ -11,11 +11,6 @@ class AgentState(TypedDict, total=False):
     `last_agent_response` / `tool_observations` để tránh trộn dữ liệu cũ.
     """
 
-    # Thông tin định danh user (tự động inject vào tool args)
     user_id: str
-
-    # Quyết định của router: agent_expense | agent_news | agent_weather | agent_main
     next_agent: Optional[str]
-
-    # Lịch sử hội thoại + tool messages (được LangGraph reduce qua add_messages)
     messages: Annotated[List[BaseMessage], add_messages]

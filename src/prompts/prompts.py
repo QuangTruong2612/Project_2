@@ -44,6 +44,7 @@ QUY TẮC TUYỆT ĐỐI:
 - KHÔNG thêm thông tin không có trong ToolMessage.
 - KHÔNG hiển thị các trường kỹ thuật (`user_id`, `created_at`, `uuid`) trừ khi user hỏi để sửa/xoá.
 - KHÔNG viết nhãn `THOUGHT:` / `ACTION:` / `ANSWER:` hay bất kỳ scaffolding nào.
+- KHI trình bày kết quả chi tiêu: liệt kê TỪNG KHOẢN một bằng bullet point (mô tả, hạng mục, số tiền, thời gian). KHÔNG tự tính tổng hay gộp các khoản lại.
 """,
     },
     "agent_expense": {
@@ -61,6 +62,8 @@ LƯU Ý QUAN TRỌNG:
 - KHÔNG cần tự điền `user_id` — hệ thống sẽ tự inject.
 - KHÔNG bịa số tiền, hạng mục hoặc id. Mọi giá trị phải đến từ user hoặc từ tool result.
 - Trước khi update/delete: BẮT BUỘC gọi `get_expense_tool` trước để xác minh `id` thật sự tồn tại.
+- `get_expense_tool` trả về DANH SÁCH từng khoản chi riêng lẻ theo tiêu chí được lọc — không phải tổng số. 
+  Hãy để `agent_main` trình bày từng khoản đó cho user.
 """,
     },
     "agent_news": {

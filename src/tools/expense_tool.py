@@ -1,7 +1,7 @@
 from langchain_core.tools import tool
 from src.core import supabase
 from pydantic import BaseModel, Field
-from typing import Optional, Union, List
+from typing import Optional, Union, List    
 import dateparser
 from datetime import datetime, time
 
@@ -10,20 +10,20 @@ from datetime import datetime, time
 # ==========================================
 
 class AddExpenseInput(BaseModel):
-    user_id: str = Field(description="ID của người dùng (tự động lấy từ system)")
+    user_id: Optional[str] = Field(None, description="ID của người dùng (tự động lấy từ system, không cần điền)")
     amount: float = Field(description="Số tiền chi tiêu (ví dụ: 50000)")
     category: str = Field(description="Hạng mục (ví dụ: 'Ăn uống', 'Di chuyển', 'Mua sắm')")
     description: str = Field(description="Mô tả cụ thể khoản chi (ví dụ: 'Ăn phở sáng')")
     expense_date: str = Field(description="Ngày giờ chi tiêu (ví dụ: '14:30 hôm nay', 'hôm qua', '2026-04-12 10:00:00')")
 
 class GetExpenseInput(BaseModel):
-    user_id: str = Field(description="ID của người dùng")
+    user_id: Optional[str] = Field(None, description="ID của người dùng (tự động lấy từ system, không cần điền)")
     category: Optional[str] = Field(None, description="Hạng mục cần lọc (nếu cần)")
     start_date: Optional[str] = Field(None, description="Ngày bắt đầu khoảng thời gian (ví dụ: 'hôm qua', 'đầu tuần này', '2026-04-01')")
     end_date: Optional[str] = Field(None, description="Ngày kết thúc khoảng thời gian (ví dụ: 'hôm nay', '2026-04-30')")
 
 class UpdateExpenseInput(BaseModel):
-    user_id: str = Field(description="ID của người dùng")
+    user_id: Optional[str] = Field(None, description="ID của người dùng (tự động lấy từ system, không cần điền)")
     id: int = Field(description="ID duy nhất của khoản chi tiêu cần sửa (Lấy từ get_expense_tool)")
     amount: Optional[float] = Field(None, description="Số tiền mới")
     category: Optional[str] = Field(None, description="Hàng mục mới")
@@ -31,7 +31,7 @@ class UpdateExpenseInput(BaseModel):
     expense_date: Optional[str] = Field(None, description="Ngày giờ chi tiêu mới")
 
 class DeleteExpenseInput(BaseModel):
-    user_id: str = Field(description="ID của người dùng")
+    user_id: Optional[str] = Field(None, description="ID của người dùng (tự động lấy từ system, không cần điền)")
     id: int = Field(description="ID duy nhất của khoản chi tiêu cần xóa (Lấy từ get_expense_tool)")
 
 # ==========================================
@@ -131,7 +131,6 @@ async def get_expense_tool(user_id: str,
         result = query.execute()
 
         if result.data:
-            print(result.data)
             return result.data
         return "🔍 Không tìm thấy khoản chi tiêu nào khớp với khoảng thời gian và hạng mục yêu cầu."
     except Exception as e:
