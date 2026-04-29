@@ -63,10 +63,19 @@ QUAN TRỌNG:
 QUY TẮC:
 - KHÔNG tự điền `user_id` — hệ thống sẽ inject tự động.
 - KHÔNG bịa số tiền / hạng mục / id. Mọi giá trị phải đến từ user.
-- Trước khi update/delete: BẮT BUỘC gọi `get_expense_tool` trước để xác minh
-  `id` thật sự tồn tại.
-- Có thể gọi nhiều tool song song trong cùng 1 lượt nếu cần (vd: vừa lấy chi
-  tiêu tháng này vừa lấy tháng trước).
+- LUỒNG UPDATE/DELETE (mỗi lượt chỉ có 1 round tool, kết quả tool đi thẳng
+  `agent_answer`, bạn KHÔNG thấy lại kết quả tool ở cùng lượt):
+  • Nếu user đã cho `id` cụ thể (vd: "xoá khoản id 17") → gọi
+    `update_expense_tool` / `delete_expense_tool` với đúng id đó. KHÔNG gọi
+    `get_expense_tool` nữa.
+  • Nếu user mô tả khoản chi bằng ngôn ngữ tự nhiên nhưng chưa có id (vd:
+    "xoá khoản cà phê hôm qua"): CHỈ gọi `get_expense_tool` lần này để lấy
+    danh sách ứng viên phù hợp. `agent_answer` sẽ trình bày danh sách và
+    user sẽ xác nhận id ở LƯỢT SAU; lúc đó bạn mới gọi update/delete.
+- Có thể gọi nhiều tool SONG SONG trong cùng 1 lượt nếu chúng độc lập (vd:
+  vừa lấy chi tiêu tháng này vừa lấy tháng trước). KHÔNG dùng cách này cho
+  luồng get-rồi-update vì các lời gọi tool song song không thấy kết quả
+  của nhau.
 """,
     },
 
@@ -134,8 +143,8 @@ A) KHI CÓ KẾT QUẢ TỪ TOOL CHI TIÊU (`add/get/update/delete_expense_tool`
 
 💰 **Chi tiêu của bạn** (kèm khoảng thời gian / hạng mục lọc nếu user yêu cầu):
 
-- [Mô tả ngắn] — **[số tiền có dấu phẩy phân cách hàng ngàn] VNĐ** _(Hạng mục: [category], [thời gian rút gọn])_
-- [Mô tả ngắn] — **[số tiền] VNĐ** _(Hạng mục: [category], [thời gian])_
+- `#[id]` [Mô tả ngắn] — **[số tiền có dấu phẩy phân cách hàng ngàn] VNĐ** _(Hạng mục: [category], [thời gian rút gọn])_
+- `#[id]` [Mô tả ngắn] — **[số tiền] VNĐ** _(Hạng mục: [category], [thời gian])_
 - ...
 
 📊 **Tổng cộng: [tổng các amount] VNĐ** ([N] khoản)
@@ -143,9 +152,15 @@ A) KHI CÓ KẾT QUẢ TỪ TOOL CHI TIÊU (`add/get/update/delete_expense_tool`
   Quy tắc:
   - Tổng = cộng đúng các `amount` có trong ToolMessage. Cộng cẩn thận, KHÔNG làm tròn.
   - KHÔNG thêm khoản chi không có trong ToolMessage.
+  - LUÔN in `id` mỗi khoản ở dạng `#17` để user có thể chỉ định ở lượt sau
+    khi muốn sửa/xoá (vd: "xoá khoản #17").
   - Nếu list rỗng, nói "Bạn chưa có khoản chi nào trong khoảng thời gian này." — KHÔNG bịa.
   - Nếu user yêu cầu nhóm theo hạng mục, thêm phần "Theo hạng mục:" liệt kê tổng từng category.
-  - Có thể kết bằng câu gợi mở ("Bạn có muốn sửa hay xoá khoản nào không?").
+  - Nếu bối cảnh user đang muốn xoá/sửa (vd: lượt trước họ nói "xoá khoản cà
+    phê hôm qua"), kết bằng câu: "Khoản nào trong các khoản trên bạn muốn
+    [xoá/sửa]? Nhắn mình kèm `#id` nhé."
+  - Ngược lại, có thể kết bằng câu gợi mở chung ("Bạn có muốn sửa hay xoá
+    khoản nào không?").
 
 • Nếu là `add_expense_tool` / `update_expense_tool` / `delete_expense_tool` thành công:
   - Xác nhận ngắn gọn, ấm áp. Ví dụ: "Đã ghi lại: ăn trưa 50.000 VNĐ (Ăn uống) lúc 12:00 hôm nay nhé!"
