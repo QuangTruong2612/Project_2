@@ -10,8 +10,8 @@ WORKDIR /app
 
 # Build deps cho một số package C/Cython (chromadb, PyMuPDF, sentence-transformers, ...)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        curl \
+    build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Cài deps trước để tận dụng cache layer
@@ -19,7 +19,7 @@ COPY requirements.txt setup.py README.md ./
 COPY src/__init__.py src/__init__.py
 
 RUN pip install --upgrade pip \
- && pip install -r requirements.txt
+    && pip install -r requirements.txt
 
 # Copy source code
 COPY src ./src

@@ -6,7 +6,7 @@ export const runtime = "nodejs";
  * Proxy server-side sang FastAPI backend.
  * BACKEND_URL được inject qua biến môi trường (xem docker-compose.yml).
  */
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://backend:8000";
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export async function POST(req: NextRequest) {
   let payload: unknown;

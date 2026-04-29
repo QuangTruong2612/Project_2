@@ -24,7 +24,7 @@ class GetExpenseInput(BaseModel):
 
 class UpdateExpenseInput(BaseModel):
     user_id: Optional[str] = Field(None, description="ID của người dùng (tự động lấy từ system, không cần điền)")
-    id: int = Field(description="ID duy nhất của khoản chi tiêu cần sửa (Lấy từ get_expense_tool)")
+    id: str = Field(description="ID duy nhất của khoản chi tiêu cần sửa (Lấy từ get_expense_tool)")
     amount: Optional[float] = Field(None, description="Số tiền mới")
     category: Optional[str] = Field(None, description="Hàng mục mới")
     description: Optional[str] = Field(None, description="Mô tả mới")
@@ -32,7 +32,7 @@ class UpdateExpenseInput(BaseModel):
 
 class DeleteExpenseInput(BaseModel):
     user_id: Optional[str] = Field(None, description="ID của người dùng (tự động lấy từ system, không cần điền)")
-    id: int = Field(description="ID duy nhất của khoản chi tiêu cần xóa (Lấy từ get_expense_tool)")
+    id: str = Field(description="ID duy nhất của khoản chi tiêu cần xóa (Lấy từ get_expense_tool)")
 
 # ==========================================
 # HÀM BỔ TRỢ (HELPERS)
@@ -129,7 +129,7 @@ async def get_expense_tool(user_id: str,
                 query = query.lte("expense_date", parsed_end)
 
         result = query.execute()
-
+        print(result.data)
         if result.data:
             return result.data
         return "🔍 Không tìm thấy khoản chi tiêu nào khớp với khoảng thời gian và hạng mục yêu cầu."
@@ -138,7 +138,7 @@ async def get_expense_tool(user_id: str,
 
 @tool(args_schema=UpdateExpenseInput)
 async def update_expense_tool(user_id: str,
-                               id: int,
+                               id: str,
                                amount: Optional[float] = None,
                                category: Optional[str] = None, 
                                description: Optional[str] = None,
@@ -168,7 +168,7 @@ async def update_expense_tool(user_id: str,
         return f"⚠️ Lỗi cập nhật: {str(e)}"
 
 @tool(args_schema=DeleteExpenseInput)
-async def delete_expense_tool(user_id: str, id: int) -> str:
+async def delete_expense_tool(user_id: str, id: str) -> str:
     """XÓA khoản chi tiêu dựa trên ID."""
     try:
         result = supabase.table("expenses").delete().eq("id", id).eq("user_id", user_id).execute()

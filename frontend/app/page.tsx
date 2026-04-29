@@ -44,11 +44,7 @@ export default function Page() {
 
   // Khôi phục user_id / session_id từ localStorage
   useEffect(() => {
-    let uid = localStorage.getItem(STORAGE_USER);
-    if (!uid) {
-      uid = uuid();
-      localStorage.setItem(STORAGE_USER, uid);
-    }
+    const uid = 'f9d65957-842b-4127-aefd-8c94427968a1';
     let sid = localStorage.getItem(STORAGE_SESSION);
     if (!sid) {
       sid = uuid();
