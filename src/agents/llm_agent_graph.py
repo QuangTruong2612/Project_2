@@ -5,24 +5,27 @@ Kiến trúc mới:
     START -> agent_router (with_structured_output -> chọn next_agent)
                 |
                 +--> agent_expense --(tool_calls?)--+-> tools_expense -> agent_answer -> END
-                |                                    +-> END  (specialist tự trả lời hoặc hỏi lại)
+                |                                    +-> agent_answer -> END
                 |
                 +--> agent_weather --(tool_calls?)--+-> tools_weather -> agent_answer -> END
-                |                                    +-> END
+                |                                    +-> agent_answer -> END
                 |
                 +--> agent_news    --(tool_calls?)--+-> tools_news    -> agent_answer -> END
-                |                                    +-> END
+                |                                    +-> agent_answer -> END
                 |
                 +--> agent_answer -> END   (chit-chat / không cần tool)
 
 Quan trọng:
+- MỌI flow đều kết thúc bằng `agent_answer` để giọng văn + định dạng câu
+  trả lời nhất quán. Specialist không bao giờ tự kết thúc graph.
 - Sau khi tool chạy xong, graph đi thẳng đến `agent_answer`, KHÔNG quay lại
   specialist. `agent_answer` KHÔNG bind tool → không thể trigger tool call
   mới → triệt tiêu vòng lặp "gọi đi gọi lại tool" (nguồn gây nhiều request).
 - Specialist CHỈ có trách nhiệm chọn & gọi đúng tool. Nếu không có tool
-  phù hợp (hoặc cần hỏi lại user), specialist tự trả lời rồi → END.
-- Router chọn `agent_answer` cho các yêu cầu không cần tool (chào hỏi,
-  trò chuyện chung).
+  phù hợp (vd: thiếu thông tin / out-of-scope / router misroute), specialist
+  emit text gợi ý rồi đi qua `agent_answer` để chốt lại với user.
+- Router (llama-3.3-70b-versatile) chọn `agent_answer` cho các yêu cầu
+  không cần tool (chào hỏi, trò chuyện chung).
 - Mỗi specialist `bind_tools(...)` tools tương ứng → LLM gọi tool qua
   native tool-calling thay vì tự sinh chuỗi text.
 - Tool node tự inject `user_id` từ state vào args (LLM không cần biết).
@@ -59,10 +62,21 @@ from src.tools import (
 
 # ─── LLM ───────────────────────────────────────────────────────────────────────
 
+# Specialist + agent_answer dùng model nhẹ (giá thấp, đủ cho format output
+# và tool-calling đơn giản).
 llm = ChatGroq(
     api_key=settings.GROQ_API_KEY,
     model_name="llama-3.1-8b-instant",
     temperature=0.1,
+)
+
+# Router quyết định luồng — nếu sai sẽ cascade sang sai tool, nên dùng model
+# mạnh hơn để giảm xác suất misroute. Chỉ chạy 1 lần / turn nên cost không
+# tăng đáng kể.
+router_base_llm = ChatGroq(
+    api_key=settings.GROQ_API_KEY,
+    model_name="llama-3.3-70b-versatile",
+    temperature=0,
 )
 
 
@@ -101,7 +115,7 @@ class RouteDecision(BaseModel):
     )
 
 
-router_llm = llm.with_structured_output(RouteDecision)
+router_llm = router_base_llm.with_structured_output(RouteDecision)
 
 
 def _system_for(agent_name: str) -> SystemMessage:
@@ -226,17 +240,19 @@ def _make_specialist_router(tools_node_name: str) -> Callable:
     """Sau khi specialist phản hồi:
     - Nếu AIMessage có `tool_calls` -> nhảy sang tool node tương ứng
       (sau đó sẽ tới `agent_answer` để chốt câu trả lời).
-    - Ngược lại (specialist tự trả lời / hỏi lại user) -> END.
+    - Ngược lại (specialist không gọi tool — thiếu info, out-of-scope, hoặc
+      router misroute) -> đi qua `agent_answer` để giọng văn + định dạng
+      nhất quán với các flow còn lại.
     """
 
     def route(state: AgentState) -> str:
         messages = state.get("messages", [])
         if not messages:
-            return END
+            return "agent_answer"
         last = messages[-1]
         if isinstance(last, AIMessage) and last.tool_calls:
             return tools_node_name
-        return END
+        return "agent_answer"
 
     return route
 
@@ -271,17 +287,17 @@ workflow.add_conditional_edges(
 workflow.add_conditional_edges(
     "agent_expense",
     _make_specialist_router("tools_expense"),
-    {"tools_expense": "tools_expense", END: END},
+    {"tools_expense": "tools_expense", "agent_answer": "agent_answer"},
 )
 workflow.add_conditional_edges(
     "agent_weather",
     _make_specialist_router("tools_weather"),
-    {"tools_weather": "tools_weather", END: END},
+    {"tools_weather": "tools_weather", "agent_answer": "agent_answer"},
 )
 workflow.add_conditional_edges(
     "agent_news",
     _make_specialist_router("tools_news"),
-    {"tools_news": "tools_news", END: END},
+    {"tools_news": "tools_news", "agent_answer": "agent_answer"},
 )
 
 # Sau khi tool chạy xong -> agent_answer (KHÔNG quay lại specialist)
