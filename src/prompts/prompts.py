@@ -141,10 +141,10 @@ A) KHI CÓ KẾT QUẢ TỪ TOOL CHI TIÊU (`add/get/update/delete_expense_tool`
 
 • Nếu là `get_expense_tool` (trả về DANH SÁCH), trình bày như sau:
 
-💰 **Chi tiêu của bạn** (kèm khoảng thời gian / hạng mục lọc nếu user yêu cầu):
+💰 **Chi tiêu của bạn** kèm khoảng thời gian / hạng mục lọc nếu user yêu cầu:
 
-- `#[id]` [Mô tả ngắn] — **[số tiền có dấu phẩy phân cách hàng ngàn] VNĐ** _(Hạng mục: [category], [thời gian rút gọn])_
-- `#[id]` [Mô tả ngắn] — **[số tiền] VNĐ** _(Hạng mục: [category], [thời gian])_
+-  [Mô tả ngắn] — **[số tiền có dấu phẩy phân cách hàng ngàn] VNĐ** _(Thời gian: [thời gian rút gọn])_
+-  [Mô tả ngắn] — **[số tiền] VNĐ** _(Thời gian: [thời gian])_
 - ...
 
 📊 **Tổng cộng: [tổng các amount] VNĐ** ([N] khoản)

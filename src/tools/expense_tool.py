@@ -128,11 +128,16 @@ async def get_expense_tool(user_id: str,
             if parsed_end:
                 query = query.lte("expense_date", parsed_end)
 
-        result = query.execute()
-        print(result.data)
-        if result.data:
-            return result.data
-        return "🔍 Không tìm thấy khoản chi tiêu nào khớp với khoảng thời gian và hạng mục yêu cầu."
+        results = query.execute()
+        outputs = []
+        if results:
+            for row in results.data:
+                outputs.append(
+                    f"- {row['description'] or 'N/A'} | {row['amount']:,.0f} VNĐ | {row['expense_date']}"
+                )
+            return "\n".join(outputs)
+
+        return "Không tìm thấy khoản chi tiêu nào."
     except Exception as e:
         return f"⚠️ Lỗi truy vấn: {str(e)}"
 
