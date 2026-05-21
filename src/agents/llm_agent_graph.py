@@ -1,37 +1,3 @@
-"""Multi-agent graph dùng native tool-calling, tách rõ pha gọi tool khỏi pha trả lời.
-
-Kiến trúc mới:
-
-    START -> agent_router (with_structured_output -> chọn next_agent)
-                |
-                +--> agent_expense --(tool_calls?)--+-> tools_expense -> agent_answer -> END
-                |                                    +-> agent_answer -> END
-                |
-                +--> agent_weather --(tool_calls?)--+-> tools_weather -> agent_answer -> END
-                |                                    +-> agent_answer -> END
-                |
-                +--> agent_news    --(tool_calls?)--+-> tools_news    -> agent_answer -> END
-                |                                    +-> agent_answer -> END
-                |
-                +--> agent_answer -> END   (chit-chat / không cần tool)
-
-Quan trọng:
-- MỌI flow đều kết thúc bằng `agent_answer` để giọng văn + định dạng câu
-  trả lời nhất quán. Specialist không bao giờ tự kết thúc graph.
-- Sau khi tool chạy xong, graph đi thẳng đến `agent_answer`, KHÔNG quay lại
-  specialist. `agent_answer` KHÔNG bind tool → không thể trigger tool call
-  mới → triệt tiêu vòng lặp "gọi đi gọi lại tool" (nguồn gây nhiều request).
-- Specialist CHỈ có trách nhiệm chọn & gọi đúng tool. Nếu không có tool
-  phù hợp (vd: thiếu thông tin / out-of-scope / router misroute), specialist
-  emit text gợi ý rồi đi qua `agent_answer` để chốt lại với user.
-- Router (llama-3.3-70b-versatile) chọn `agent_answer` cho các yêu cầu
-  không cần tool (chào hỏi, trò chuyện chung).
-- Mỗi specialist `bind_tools(...)` tools tương ứng → LLM gọi tool qua
-  native tool-calling thay vì tự sinh chuỗi text.
-- Tool node tự inject `user_id` từ state vào args (LLM không cần biết).
-- State chỉ giữ `messages` làm source of truth qua `add_messages` reducer.
-"""
-
 from __future__ import annotations
 
 from typing import Callable, List, Literal
@@ -62,17 +28,25 @@ from src.tools import (
 
 # ─── LLM ───────────────────────────────────────────────────────────────────────
 
-# Specialist + agent_answer dùng model nhẹ (giá thấp, đủ cho format output
-# và tool-calling đơn giản).
+# Specialist dùng model đủ mạnh để tool-calling ổn định.
+# llama-3.1-8b-instant quá nhỏ: hay bỏ qua tool_calls, tự sinh text thay vì
+# gọi tool → agent_answer hallucinate xác nhận giả.
 llm = ChatGroq(
     api_key=settings.GROQ_API_KEY,
-    model_name="llama-3.1-8b-instant",
+    model_name="llama-3.3-70b-versatile",
     temperature=0.1,
+)
+    
+# agent_answer cần tổng hợp và format output — dùng cùng model mạnh.
+llm_answer = ChatGroq(
+    api_key=settings.GROQ_API_KEY,
+    model_name="llama-3.3-70b-versatile",
+    temperature=0.2,    
 )
 
 # Router quyết định luồng — nếu sai sẽ cascade sang sai tool, nên dùng model
 # mạnh hơn để giảm xác suất misroute. Chỉ chạy 1 lần / turn nên cost không
-# tăng đáng kể.
+# tăng đáng kể. 
 router_base_llm = ChatGroq(
     api_key=settings.GROQ_API_KEY,
     model_name="llama-3.3-70b-versatile",
@@ -128,24 +102,32 @@ async def agent_router_node(state: AgentState) -> dict:
     messages: List[BaseMessage] = state.get("messages", [])
     routing_input: List[BaseMessage] = [_system_for("agent_router"), *messages]
     decision: RouteDecision = await router_llm.ainvoke(routing_input)
-    return {"next_agent": decision.next_agent}
+    # Reset retry khi router chạy lại (dù lần đầu hay retry)
+    return {"next_agent": decision.next_agent, "router_retries": state.get("router_retries", 0)}
 
 
 def route_after_router(state: AgentState) -> str:
     return state.get("next_agent") or "agent_answer"
 
 
-# ─── Specialist agent factory (chỉ gọi tool, không sinh câu trả lời cuối) ──────
+# ─── Specialist agent factory ────────────────────────────────────────────────
+# Specialist dùng tool_choice="auto": model tự quyết định có gọi tool hay không.
+# Nếu không gọi tool (thiếu info, misroute...), specialist router sẽ đưa
+# trở về agent_router để tìm agent đúng (tối đa _MAX_RETRIES lần).
+_MAX_RETRIES = 2
 
 
 def _make_specialist_node(agent_name: str, tools: list) -> Callable:
-    bound_llm = llm.bind_tools(tools)
+    bound_llm = llm.bind_tools(tools) 
     sys_msg = _system_for(agent_name)
 
     async def node(state: AgentState) -> dict:
         messages: List[BaseMessage] = state.get("messages", [])
         input_messages = [sys_msg, *messages]
         response = await bound_llm.ainvoke(input_messages)
+        # Debug: log xem có tool_calls không
+        has_calls = bool(getattr(response, "tool_calls", None))
+        print(f"[{agent_name}] tool_calls={has_calls} | content={str(response.content)[:80]}")
         return {"messages": [response]}
 
     node.__name__ = f"{agent_name}_node"
@@ -169,7 +151,7 @@ async def agent_answer_node(state: AgentState) -> dict:
     """
     messages: List[BaseMessage] = state.get("messages", [])
     input_messages = [_system_for("agent_answer"), *messages]
-    response = await llm.ainvoke(input_messages)
+    response = await llm_answer.ainvoke(input_messages)
     return {"messages": [response]}
 
 
@@ -238,23 +220,36 @@ tools_news_node = _make_tool_node(NEWS_TOOLS)
 
 def _make_specialist_router(tools_node_name: str) -> Callable:
     """Sau khi specialist phản hồi:
-    - Nếu AIMessage có `tool_calls` -> nhảy sang tool node tương ứng
-      (sau đó sẽ tới `agent_answer` để chốt câu trả lời).
-    - Ngược lại (specialist không gọi tool — thiếu info, out-of-scope, hoặc
-      router misroute) -> đi qua `agent_answer` để giọng văn + định dạng
-      nhất quán với các flow còn lại.
+    - Có tool_calls → chạy tool rồi đi agent_answer.
+    - Không có tool_calls (misroute / thiếu info):
+      • Còn retry → retry_gate (tăng counter rồi quay agent_router).
+      • Hết retry → agent_answer (fallback cuối).
     """
 
     def route(state: AgentState) -> str:
         messages = state.get("messages", [])
         if not messages:
-            return "agent_answer"
+            return "retry_gate"
         last = messages[-1]
         if isinstance(last, AIMessage) and last.tool_calls:
             return tools_node_name
+        retries = state.get("router_retries", 0)
+        if retries < _MAX_RETRIES:
+            print(f"[specialist_router] no tool_calls, retry {retries+1}/{_MAX_RETRIES}")
+            return "retry_gate"
+        print("[specialist_router] max retries, fallback agent_answer")
         return "agent_answer"
 
     return route
+
+
+async def retry_gate_node(state: AgentState) -> dict:
+    """Tăng router_retries và thêm SystemMessage để phá loop, hướng dẫn router chuyển hướng."""
+    warning = SystemMessage(content="SYSTEM WARNING: Agent trước đó không thể gọi tool. BẮT BUỘC chọn một agent KHÁC, hoặc chọn 'agent_answer' để trả lời user.")
+    return {
+        "router_retries": state.get("router_retries", 0) + 1,
+        "messages": [warning]
+    }
 
 
 # ─── Graph wiring ──────────────────────────────────────────────────────────────
@@ -266,6 +261,7 @@ workflow.add_node("agent_expense", agent_expense_node)
 workflow.add_node("agent_weather", agent_weather_node)
 workflow.add_node("agent_news", agent_news_node)
 workflow.add_node("agent_answer", agent_answer_node)
+workflow.add_node("retry_gate", retry_gate_node)  # tăng counter → quay router
 
 workflow.add_node("tools_expense", tools_expense_node)
 workflow.add_node("tools_weather", tools_weather_node)
@@ -284,24 +280,34 @@ workflow.add_conditional_edges(
     },
 )
 
+_SPECIALIST_DESTS = {
+    "tools_expense": "tools_expense",
+    "tools_weather": "tools_weather",
+    "tools_news": "tools_news",
+    "retry_gate": "retry_gate",
+    "agent_answer": "agent_answer",
+}
+
 workflow.add_conditional_edges(
     "agent_expense",
     _make_specialist_router("tools_expense"),
-    {"tools_expense": "tools_expense", "agent_answer": "agent_answer"},
+    {"tools_expense": "tools_expense", "retry_gate": "retry_gate", "agent_answer": "agent_answer"},
 )
 workflow.add_conditional_edges(
     "agent_weather",
     _make_specialist_router("tools_weather"),
-    {"tools_weather": "tools_weather", "agent_answer": "agent_answer"},
+    {"tools_weather": "tools_weather", "retry_gate": "retry_gate", "agent_answer": "agent_answer"},
 )
 workflow.add_conditional_edges(
     "agent_news",
     _make_specialist_router("tools_news"),
-    {"tools_news": "tools_news", "agent_answer": "agent_answer"},
+    {"tools_news": "tools_news", "retry_gate": "retry_gate", "agent_answer": "agent_answer"},
 )
 
-# Sau khi tool chạy xong -> agent_answer (KHÔNG quay lại specialist)
-# → đảm bảo tối đa 1 round gọi tool mỗi turn, không lặp tool.
+# retry_gate → agent_router (với counter đã tăng)
+workflow.add_edge("retry_gate", "agent_router")
+
+# Sau khi tool chạy xong → agent_answer (KHÔNG quay lại specialist)
 workflow.add_edge("tools_expense", "agent_answer")
 workflow.add_edge("tools_weather", "agent_answer")
 workflow.add_edge("tools_news", "agent_answer")

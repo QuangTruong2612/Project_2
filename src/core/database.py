@@ -23,3 +23,10 @@ def get_supabase_client() -> Client:
 
 supabase: Client = get_supabase_client()
 
+if __name__ == "__main__":
+    try:
+        conn = supabase
+        print("Connect to Supabase SUCCESSED!")
+    except Exception as e:
+        print("Connect to Supabase FAILED!")
+        print(f"Error: {e}")

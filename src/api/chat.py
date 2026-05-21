@@ -50,9 +50,14 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
     messages = final_state.get("messages", [])
 
-    # Lấy AIMessage cuối cùng làm câu trả lời
+    last_human_idx = next(
+        (i for i, m in reversed(list(enumerate(messages))) if isinstance(m, HumanMessage)),
+        -1,
+    )
+    current_turn_msgs = messages[last_human_idx + 1:] if last_human_idx >= 0 else messages
+    
     ai_reply = next(
-        (m.content for m in reversed(messages) if isinstance(m, AIMessage)),
+        (m.content for m in reversed(current_turn_msgs) if isinstance(m, AIMessage) and m.content.strip()),
         "Xin lỗi, mình chưa có câu trả lời cho câu này.",
     )
 

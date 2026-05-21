@@ -14,3 +14,4 @@ class AgentState(TypedDict, total=False):
     user_id: str
     next_agent: Optional[str]
     messages: Annotated[List[BaseMessage], add_messages]
+    router_retries: int

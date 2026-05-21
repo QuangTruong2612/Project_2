@@ -2,13 +2,13 @@ from langchain_core.tools import tool
 from src.core import supabase
 from pydantic import BaseModel, Field
 from typing import Optional, Union, List    
+import re
 import dateparser
-from datetime import datetime, time
+from datetime import datetime, time, timedelta, timezone as tz
 
 # ==========================================
 # CẤU TRÚC DỮ LIỆU ĐẦU VÀO (SCHEMAS)
 # ==========================================
-
 class AddExpenseInput(BaseModel):
     user_id: Optional[str] = Field(None, description="ID của người dùng (tự động lấy từ system, không cần điền)")
     amount: float = Field(description="Số tiền chi tiêu (ví dụ: 50000)")
@@ -35,8 +35,39 @@ class DeleteExpenseInput(BaseModel):
     id: str = Field(description="ID duy nhất của khoản chi tiêu cần xóa (Lấy từ get_expense_tool)")
 
 # ==========================================
-# HÀM BỔ TRỢ (HELPERS)
-# ==========================================
+def _normalize_time_expr(dt_str: str) -> str:
+    """Chuẩn hoá biểu thức giờ kiểu Việt sang dạng dateparser hiểu được."""
+    # Sửa lỗi chính tả phổ biến
+    dt_str = dt_str.replace("hôm này", "hôm nay").replace("bửa nay", "hôm nay").replace("bữa nay", "hôm nay")
+    
+    # Chuẩn hoá buổi
+    dt_str = dt_str.replace("trưa", "").replace("sáng", "").replace("tối", "")
+    # Xử lý riêng chữ chiều: ví dụ "2h chiều" -> "14:00", nhưng dateparser hỗ trợ pm.
+    dt_str = dt_str.replace("chiều", "pm")
+    dt_str = re.sub(
+        r'(\d{1,2})h(\d{2})',
+        lambda m: f"{int(m.group(1)):02d}:{m.group(2)}",
+        dt_str,
+    )
+    # Dạng: 14h (chữ h cuối, không có phút)  ->  14:00
+    dt_str = re.sub(    
+        r'(\d{1,2})h\b',
+        lambda m: f"{int(m.group(1)):02d}:00",
+        dt_str,
+    )
+    # Dạng: "9 giờ 30" -> "09:30", "9 giờ" -> "09:00"
+    dt_str = re.sub(
+        r'(\d{1,2})\s*gi[ờo]\s*(\d{1,2})',
+        lambda m: f"{int(m.group(1)):02d}:{int(m.group(2)):02d}",
+        dt_str,
+    )
+    dt_str = re.sub(
+        r'(\d{1,2})\s*gi[ờo]\b',
+        lambda m: f"{int(m.group(1)):02d}:00",
+        dt_str,
+    )
+    return dt_str
+
 
 def _parse_datetime(
     dt_str: str,
@@ -47,29 +78,47 @@ def _parse_datetime(
     - prefer_start_of_day=True: force về 00:00:00 (dùng cho giới hạn dưới)
     - prefer_end_of_day=True:   force về 23:59:59 (dùng cho giới hạn trên)
     """
-    from datetime import timezone as tz
     if not dt_str:
         return None
 
-    parsed = dateparser.parse(
-        dt_str,
-        settings={
-            'PREFER_DATES_FROM': 'current_period',
-            'RETURN_AS_TIMEZONE_AWARE': True,
-            'TIMEZONE': 'Asia/Ho_Chi_Minh',
-            'TO_TIMEZONE': 'UTC',
-        }
-    )
+    # Chuẩn hoá biểu thức giờ tiếng Việt trước khi đưa vào dateparser
+    normalized = _normalize_time_expr(dt_str)
+
+    _DATEPARSER_SETTINGS = {
+        'PREFER_DATES_FROM': 'current_period',
+        'RETURN_AS_TIMEZONE_AWARE': False,
+        'TIMEZONE': 'Asia/Ho_Chi_Minh',
+    }
+
+    parsed = dateparser.parse(normalized, languages=['vi', 'en'], settings=_DATEPARSER_SETTINGS)
+
+    # Thử lại với chuỗi gốc nếu normalized không parse được
+    if not parsed and normalized != dt_str:
+        parsed = dateparser.parse(dt_str, languages=['vi', 'en'], settings=_DATEPARSER_SETTINGS)
+
     if not parsed:
         return None
 
-    # Luôn apply giới hạn ngày nếu được yêu cầu (không kiểm tra time == 00:00)
+    # Luôn apply giới hạn ngày nếu được yêu cầu
     if prefer_start_of_day:
-        parsed = datetime.combine(parsed.date(), time(0, 0, 0), tzinfo=tz.utc)
+        parsed = datetime.combine(parsed.date(), time(0, 0, 0))
     elif prefer_end_of_day:
-        parsed = datetime.combine(parsed.date(), time(23, 59, 59), tzinfo=tz.utc)
+        parsed = datetime.combine(parsed.date(), time(23, 59, 59))
 
     return parsed.isoformat()
+
+
+def _format_display_time(iso_str: str) -> str:
+    """Định dạng chuỗi thời gian hiển thị (mặc định đang lưu là giờ VN)."""
+    if not iso_str:
+        return ""
+    try:
+        # Nếu chuỗi có Z hoặc +00:00 do db tự thêm, xoá đi để parse thành naive
+        clean_str = iso_str.replace("Z", "").split("+")[0]
+        dt = datetime.fromisoformat(clean_str)
+        return dt.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return iso_str
 
 # ==========================================
 # CÔNG CỤ (TOOLS)
@@ -86,7 +135,9 @@ async def add_expense_tool(user_id: str,
     Hỗ trợ cả ngày và giờ. Ví dụ: 'Ghi lại 50k ăn trưa lúc 12h'.
     """
     try:
-        final_dt = _parse_datetime(expense_date) or datetime.now().isoformat()
+        # Nếu không parse được, dùng giờ VN hiện tại
+        fallback_dt = datetime.now(tz(timedelta(hours=7))).replace(tzinfo=None).isoformat()
+        final_dt = _parse_datetime(expense_date) or fallback_dt
         insert_data = {
             "user_id": user_id,
             "amount": amount,
@@ -97,7 +148,8 @@ async def add_expense_tool(user_id: str,
 
         result = supabase.table("expenses").insert(insert_data).execute()
         if result.data:
-            return f"✅ Đã ghi nhận: {description} ({category}) - {amount:,.0f} VNĐ. Thời gian: {final_dt}."
+            display_dt = _format_display_time(final_dt)
+            return f"✅ Đã ghi nhận: {description} ({category}) - {amount:,.0f} VNĐ. Thời gian: {display_dt}."
         return "❌ Lỗi: Không thể lưu vào cơ sở dữ liệu."
     except Exception as e:
         return f"⚠️ Lỗi hệ thống: {str(e)}"
@@ -132,8 +184,9 @@ async def get_expense_tool(user_id: str,
         outputs = []
         if results:
             for row in results.data:
+                display_dt = _format_display_time(row.get('expense_date', ''))
                 outputs.append(
-                    f"- {row['description'] or 'N/A'} | {row['amount']:,.0f} VNĐ | {row['expense_date']}"
+                    f"- #{row['id']} | {row['description'] or 'N/A'} | {row['amount']:,.0f} VNĐ | {display_dt}"
                 )
             return "\n".join(outputs)
 
@@ -167,7 +220,8 @@ async def update_expense_tool(user_id: str,
 
         result = supabase.table("expenses").update(update_data).eq("id", id).eq("user_id", user_id).execute()
         if result.data:
-            return f"✅ Đã cập nhật thành công khoản chi ID: {id}."
+            updated_dt = _format_display_time(result.data[0].get('expense_date', ''))
+            return f"✅ Đã cập nhật khoản chi #{id}. Thông tin mới nhất lúc {updated_dt}."
         return f"❌ Không tìm thấy thông tin để cập nhật."
     except Exception as e:
         return f"⚠️ Lỗi cập nhật: {str(e)}"
