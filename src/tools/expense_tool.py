@@ -14,7 +14,8 @@ class AddExpenseInput(BaseModel):
     amount: float = Field(description="Số tiền chi tiêu (ví dụ: 50000)")
     category: str = Field(description="Hạng mục (ví dụ: 'Ăn uống', 'Di chuyển', 'Mua sắm')")
     description: str = Field(description="Mô tả cụ thể khoản chi (ví dụ: 'Ăn phở sáng')")
-    expense_date: str = Field(description="Ngày giờ chi tiêu (ví dụ: '14:30 hôm nay', 'hôm qua', '2026-04-12 10:00:00')")
+    date: str = Field(description="Ngày chi tiêu (ví dụ: 'hôm nay', 'hôm qua', '2026-04-12')")
+    time: str = Field(description="Thời gian chi tiêu (ví dụ: '14:30', '12:00')")
 
 class GetExpenseInput(BaseModel):
     user_id: Optional[str] = Field(None, description="ID của người dùng (tự động lấy từ system, không cần điền)")
@@ -28,8 +29,9 @@ class UpdateExpenseInput(BaseModel):
     amount: Optional[float] = Field(None, description="Số tiền mới")
     category: Optional[str] = Field(None, description="Hàng mục mới")
     description: Optional[str] = Field(None, description="Mô tả mới")
-    expense_date: Optional[str] = Field(None, description="Ngày giờ chi tiêu mới")
-
+    date: Optional[str] = Field(None, description="Ngày chi tiêu (ví dụ: 'hôm nay', 'hôm qua', '2026-04-12')")
+    time: Optional[str] = Field(None, description="Thời gian chi tiêu (ví dụ: '14:30', '12:00')")
+    
 class DeleteExpenseInput(BaseModel):
     user_id: Optional[str] = Field(None, description="ID của người dùng (tự động lấy từ system, không cần điền)")
     id: str = Field(description="ID duy nhất của khoản chi tiêu cần xóa (Lấy từ get_expense_tool)")
@@ -129,7 +131,9 @@ async def add_expense_tool(user_id: str,
                            amount: float,
                            category: str,
                            description: str,
-                           expense_date: str) -> str:
+                           date: str,
+                           time: str,
+) -> str:
     """
     GHI NHẬN một khoản chi tiêu mới. 
     Hỗ trợ cả ngày và giờ. Ví dụ: 'Ghi lại 50k ăn trưa lúc 12h'.
@@ -137,13 +141,15 @@ async def add_expense_tool(user_id: str,
     try:
         # Nếu không parse được, dùng giờ VN hiện tại
         fallback_dt = datetime.now(tz(timedelta(hours=7))).replace(tzinfo=None).isoformat()
-        final_dt = _parse_datetime(expense_date) or fallback_dt
+        final_dt = _parse_datetime(date) or fallback_dt
+        final_dt = datetime.combine(final_dt.date(), datetime.strptime(time, "%H:%M").time())
         insert_data = {
             "user_id": user_id,
             "amount": amount,
             "category": category,
             "description": description,
-            "expense_date": final_dt
+            "date": final_dt,
+            "time": time,
         }
 
         result = supabase.table("expenses").insert(insert_data).execute()
@@ -165,7 +171,7 @@ async def get_expense_tool(user_id: str,
     LƯU Ý: Phải lấy 'id' từ đây trước khi Cập nhật hoặc Xóa.
     """
     try:
-        query = supabase.table("expenses").select("*").eq("user_id", user_id).order("expense_date", desc=True)
+        query = supabase.table("expenses").select("*").eq("user_id", user_id).order("date", desc=True)
 
         if category and category.lower() != "all":
             query = query.ilike("category", f"%{category}%")
@@ -173,18 +179,21 @@ async def get_expense_tool(user_id: str,
         if start_date:
             parsed_start = _parse_datetime(start_date, prefer_start_of_day=True)
             if parsed_start:
-                query = query.gte("expense_date", parsed_start)
+                # Chỉ lấy phần date (yyyy-mm-dd) vì cột `date` có kiểu DATE
+                query = query.gte("date", parsed_start[:10])
 
         if end_date:
             parsed_end = _parse_datetime(end_date, prefer_end_of_day=True)
             if parsed_end:
-                query = query.lte("expense_date", parsed_end)
+                query = query.lte("date", parsed_end[:10])
 
         results = query.execute()
         outputs = []
         if results:
             for row in results.data:
-                display_dt = _format_display_time(row.get('expense_date', ''))
+                row_date = row.get('date', '')
+                row_time = row.get('time', '')
+                display_dt = f"{row_date} {row_time}".strip() if row_date else ''
                 outputs.append(
                     f"- #{row['id']} | {row['description'] or 'N/A'} | {row['amount']:,.0f} VNĐ | {display_dt}"
                 )
@@ -200,9 +209,10 @@ async def update_expense_tool(user_id: str,
                                amount: Optional[float] = None,
                                category: Optional[str] = None, 
                                description: Optional[str] = None,
-                               expense_date: Optional[str] = None) -> str:
+                               date: Optional[str] = None,
+                               time: Optional[str] = None) -> str:
     """
-    SỬA ĐỔI thông tin một khoản chi (bao gồm cả cập nhật thời gian).
+    SỬA ĐỔI thông tin một khoản chi (bao gồm cả cập nhật ngày và giờ).
     PHẢI tìm ID bằng get_expense_tool trước.
     """
     try:
@@ -210,18 +220,24 @@ async def update_expense_tool(user_id: str,
         if amount is not None: update_data["amount"] = amount
         if category: update_data["category"] = category
         if description: update_data["description"] = description
-        if expense_date:
-            final_dt = _parse_datetime(expense_date)
-            if final_dt:
-                update_data["expense_date"] = final_dt
+        if date:
+            final_date = _parse_datetime(date)
+            if final_date:
+                # Chỉ lưu phần date (yyyy-mm-dd) vì cột `date` có kiểu DATE
+                update_data["date"] = final_date[:10]
+        if time:
+            update_data["time"] = time
 
         if not update_data:
             return "⚠️ Không có thông tin để cập nhật."
 
         result = supabase.table("expenses").update(update_data).eq("id", id).eq("user_id", user_id).execute()
         if result.data:
-            updated_dt = _format_display_time(result.data[0].get('expense_date', ''))
-            return f"✅ Đã cập nhật khoản chi #{id}. Thông tin mới nhất lúc {updated_dt}."
+            row = result.data[0]
+            updated_date = row.get('date', '')
+            updated_time = row.get('time', '')
+            updated_display = f"{updated_date} {updated_time}".strip()
+            return f"✅ Đã cập nhật khoản chi #{id}. Thông tin mới nhất: {updated_display}."
         return f"❌ Không tìm thấy thông tin để cập nhật."
     except Exception as e:
         return f"⚠️ Lỗi cập nhật: {str(e)}"

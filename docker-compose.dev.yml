@@ -1,0 +1,38 @@
+# docker-compose.dev.yml  –  chỉ dùng khi phát triển (hot reload)
+#
+# Cách dùng:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# File này OVERRIDE docker-compose.yml:
+#   - Backend: mount source code + bật uvicorn --reload
+#   - Frontend: mount source code + chạy `npm run dev` thay vì production server
+
+services:
+  backend:
+    # Ghi đè CMD để bật hot-reload cho Python/FastAPI
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      # Ngăn volume ghi đè cache pip trong container (nếu có)
+      - /app/.venv
+
+  frontend:
+    # Ghi đè CMD: chạy Next.js dev server thay vì production node server.js
+    command: sh -c "npm install && npm run dev"
+    environment:
+      NODE_ENV: development
+      # Khi browser gọi API (client-side), phải dùng localhost vì browser không ở trong docker network
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      # Bỏ qua logic vá lockfile bị lỗi của Next.js trong môi trường Docker
+      NEXT_IGNORE_INCORRECT_LOCKFILE: "1"
+    volumes:
+      - ./frontend:/app
+      # Giữ nguyên node_modules của container, không bị ghi đè bởi máy host
+      - frontend_node_modules:/app/node_modules
+      # Tránh xung đột .next giữa host và container, tăng tốc hot-reload
+      - /app/.next
+
+volumes:
+  frontend_node_modules:

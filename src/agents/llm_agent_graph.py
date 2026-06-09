@@ -8,7 +8,7 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-from langchain_groq import ChatGroq
+from langchain_anthropic import ChatAnthropic
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
@@ -31,25 +31,28 @@ from src.tools import (
 # Specialist dùng model đủ mạnh để tool-calling ổn định.
 # llama-3.1-8b-instant quá nhỏ: hay bỏ qua tool_calls, tự sinh text thay vì
 # gọi tool → agent_answer hallucinate xác nhận giả.
-llm = ChatGroq(
-    api_key=settings.GROQ_API_KEY,
-    model_name="llama-3.3-70b-versatile",
+llm = ChatAnthropic(
+    api_key=settings.ANTHROPIC_API_KEY,
+    base_url=settings.ANTHROPIC_URL,
+    model_name="claude-sonnet-4.6",
     temperature=0.1,
 )
     
 # agent_answer cần tổng hợp và format output — dùng cùng model mạnh.
-llm_answer = ChatGroq(
-    api_key=settings.GROQ_API_KEY,
-    model_name="llama-3.3-70b-versatile",
+llm_answer = ChatAnthropic(
+    api_key=settings.ANTHROPIC_API_KEY,
+    base_url=settings.ANTHROPIC_URL,
+    model_name="claude-sonnet-4.6",
     temperature=0.2,    
 )
 
 # Router quyết định luồng — nếu sai sẽ cascade sang sai tool, nên dùng model
 # mạnh hơn để giảm xác suất misroute. Chỉ chạy 1 lần / turn nên cost không
 # tăng đáng kể. 
-router_base_llm = ChatGroq(
-    api_key=settings.GROQ_API_KEY,
-    model_name="llama-3.3-70b-versatile",
+router_base_llm = ChatAnthropic(
+    api_key=settings.ANTHROPIC_API_KEY,
+    base_url=settings.ANTHROPIC_URL,
+    model_name="claude-sonnet-4.6",
     temperature=0,
 )
 

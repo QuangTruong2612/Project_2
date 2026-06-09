@@ -39,8 +39,10 @@ export default function Page() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Khôi phục user_id / session_id từ localStorage
   useEffect(() => {
@@ -71,6 +73,17 @@ export default function Page() {
     inputRef.current?.focus();
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    setAttachedFiles((prev) => [...prev, ...files]);
+    // Reset input để có thể chọn lại cùng file
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSend = async (textOverride?: string) => {
     const text = (textOverride ?? input).trim();
     if (!text || loading || !userId) return;
@@ -78,6 +91,7 @@ export default function Page() {
     const userMsg: Message = { role: "user", content: text, ts: Date.now() };
     setMessages((m) => [...m, userMsg]);
     setInput("");
+    setAttachedFiles([]);
     setError(null);
     setLoading(true);
 
@@ -166,7 +180,57 @@ export default function Page() {
 
         {/* Input */}
         <div className="border-t border-slate-100 bg-white/80 p-3">
+          {/* File chips */}
+          {attachedFiles.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {attachedFiles.map((file, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  <span className="max-w-[120px] truncate">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFile(i)}
+                    className="ml-0.5 rounded-full text-indigo-400 hover:text-indigo-700"
+                    aria-label="Xóa file"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              id="file-upload-input"
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+            />
+
+            {/* Add file button */}
+            <button
+              type="button"
+              id="add-file-btn"
+              onClick={() => fileInputRef.current?.click()}
+              title="Đính kèm file"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+
             <textarea
               ref={inputRef}
               value={input}

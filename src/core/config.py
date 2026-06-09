@@ -2,7 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 class Settings(BaseSettings):
-    GROQ_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    ANTHROPIC_URL: Optional[str] = None
     URL_SUPABASE: Optional[str] = None
     ANON_KEY_SUPABASE: Optional[str] = None
     PUBLISH_KEY_SUPABASE: Optional[str] = None

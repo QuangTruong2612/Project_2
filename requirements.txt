@@ -10,7 +10,7 @@ langchain-core>=0.1.33
 langgraph>=0.0.30
 openai>=1.14.0  # Hoặc google-generativeai nếu bạn dùng Gemini
 tiktoken>=0.6.0
-langchain-groq
+langchain-anthropic
 langchain-community
 
 # --- Vector Database & RAG (Cho Bookmark & Home Document) ---
@@ -36,5 +36,7 @@ ipinfo
 geocoder
 geopy
 IPython
+
+feedparser
 
 -e .

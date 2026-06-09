@@ -21,7 +21,8 @@ services:
     container_name: project2-frontend
     restart: unless-stopped
     environment:
-      # Frontend gọi backend qua mạng nội bộ docker
+      # Frontend gọi backend qua mạng nội bộ docker (Dùng cho SSR như NextJS)
+      # Nếu là React/Vue (Client-side), bạn phải dùng http://localhost:8000 nhé
       BACKEND_URL: http://backend:8000
     depends_on:
       - backend
